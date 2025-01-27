@@ -45,8 +45,29 @@ router.post(
   (async (req: Request, res: Response): Promise<void> => {
     try {
       const { email, password, name } = signupSchema.parse(req.body);
+
+      // Register the user
       const user = await registerUser(email, password, name);
-      res.status(201).json({ success: true, user });
+
+      // Generate and send an OTP to the user's email
+      const otp = await generateOTP(email);
+
+      // Exclude the password field from the response
+      const userResponse = {
+        _id: user._id,
+        email: user.email,
+        name: user.name,
+        role: user.role,
+        language: user.language,
+        plan: user.plan,
+      };
+
+      res.status(201).json({
+        success: true,
+        message: 'User registered successfully. OTP sent to email.',
+        otp, // Include OTP for testing purposes (remove in production).
+        user: userResponse,
+      });
     } catch (error: any) {
       res.status(400).json({ success: false, message: error.message });
     }
