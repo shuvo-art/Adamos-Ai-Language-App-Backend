@@ -26,7 +26,6 @@ const otpRequestSchema = z.object({
 
 const resetPasswordSchema = z.object({
   email: z.string().email(),
-  otp: z.string(),
   newPassword: z.string().min(8),
 });
 
@@ -38,6 +37,26 @@ let refreshTokens: string[] = [];
 
 // OTP cache for verification
 const otpCache = new Map<string, string>();
+
+router.post("/check-email", async (req: Request, res: Response): Promise<void> => {
+  const { email } = req.body;
+
+  try {
+    // Check if the email exists in the database
+    const user = await User.findOne({ email });
+
+    if (user) {
+      res.status(200).json({ exists: true }); // No need to return
+    } else {
+      res.status(200).json({ exists: false }); // No need to return
+    }
+  } catch (error) {
+    console.error("Error checking email availability:", error);
+    res
+      .status(500)
+      .json({ error: "An error occurred. Please try again later." }); // No need to return
+  }
+});
 
 // Signup route
 router.post(
@@ -138,7 +157,7 @@ router.post(
         res.status(400).json({ success: false, message: 'Invalid OTP' });
         return;
       }
-
+      otpCache.delete(email);
       res.status(200).json({ success: true, message: 'OTP verified successfully' });
     } catch (error: any) {
       res.status(400).json({ success: false, message: error.message });
@@ -151,15 +170,8 @@ router.post(
   '/password/reset/verify',
   (async (req: Request, res: Response): Promise<void> => {
     try {
-      const { email, otp, newPassword } = resetPasswordSchema.parse(req.body);
-      const cachedOTP = otpCache.get(email);
+      const { email,  newPassword } = resetPasswordSchema.parse(req.body);
 
-      if (!cachedOTP || cachedOTP !== otp) {
-        res.status(400).json({ success: false, message: 'Invalid OTP' });
-        return;
-      }
-
-      otpCache.delete(email); // Remove OTP from cache after successful verification
       const hashedPassword = await bcrypt.hash(newPassword, 10);
       await User.findOneAndUpdate({ email }, { password: hashedPassword });
       res.status(200).json({ success: true, message: 'Password reset successful' });
