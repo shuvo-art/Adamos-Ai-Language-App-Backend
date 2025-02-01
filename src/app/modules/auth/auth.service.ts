@@ -40,12 +40,38 @@ export const generateOTP = async (email: string) => {
     },
   });
 
-  await transporter.sendMail({
-    from: process.env.EMAIL_USER,
+  const mailOptions = {
+    from: `"Your App Name" <${process.env.EMAIL_USER}>`, // Sender name and email
     to: email,
-    subject: 'Password Reset OTP',
-    text: `Your OTP for password reset is ${otp}.`,
-  });
+    subject: 'Your One-Time Password (OTP) for Verification', // Clear subject line
+    html: `
+      <div style="font-family: Arial, sans-serif; color: #333;">
+        <h2 style="color: #4CAF50;">Your OTP for Verification</h2>
+        <p>Hello,</p>
+        <p>Your One-Time Password (OTP) for verification is:</p>
+        <h3 style="background: #f4f4f4; padding: 10px; display: inline-block; border-radius: 5px;">${otp}</h3>
+        <p>This OTP is valid for a limited time. Please do not share it with anyone.</p>
+        <p>If you did not request this OTP, please ignore this email.</p>
+        <hr style="border: 1px solid #ddd;">
+        <p style="font-size: 12px; color: #777;">
+          This email was sent by <strong>Your App Name</strong>. 
+          If you have any questions, please contact us at <a href="mailto:support@yourapp.com">support@yourapp.com</a>.
+        </p>
+      </div>
+    `,
+    headers: {
+      'Reply-To': process.env.EMAIL_USER || '', // Add a reply-to address with a default value
+      'List-Unsubscribe': `<mailto:unsubscribe@yourapp.com?subject=Unsubscribe>`, // Add unsubscribe option
+    },
+  };
+
+  try {
+    await transporter.sendMail(mailOptions);
+    console.log(`OTP sent to email: ${email}`);
+  } catch (error) {
+    console.error(`Error sending OTP to ${email}:`, error);
+    throw new Error('Failed to send OTP. Please try again.');
+  }
 
   return otp;
 };
