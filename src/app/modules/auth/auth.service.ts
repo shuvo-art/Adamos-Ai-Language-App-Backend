@@ -3,6 +3,7 @@ import bcrypt from 'bcrypt';
 import crypto from 'crypto';
 import nodemailer from 'nodemailer';
 import { User, IUser } from '../user/user.model';
+import { Subscription } from '../subscription/subscription.model';
 
 export const registerUser = async (email: string, password: string, name: string) => {
   const hashedPassword = await bcrypt.hash(password, 10);
@@ -10,8 +11,23 @@ export const registerUser = async (email: string, password: string, name: string
     email,
     password: hashedPassword,
     name,
+    plan: 'Free', // Set default plan to Free
   });
-  return newUser.save();
+  const savedUser = await newUser.save();
+
+  // Assign a Free subscription on user registration
+  const startDate = new Date();
+  const endDate = new Date();
+  endDate.setMonth(startDate.getMonth() + 1);
+
+  await Subscription.create({
+    user: savedUser._id,
+    type: 'Free',
+    startDate,
+    endDate,
+  });
+
+  return savedUser;
 };
 
 export const loginUser = async (email: string, password: string) => {
@@ -20,7 +36,7 @@ export const loginUser = async (email: string, password: string) => {
     throw new Error('Invalid email or password');
   }
   const token = jwt.sign({ id: user._id, role: user.role }, process.env.JWT_SECRET as string, {
-    expiresIn: '1h',
+    expiresIn: '7d',
   });
   return { user, token, role: user.role }; // Include the role in the response
 };
@@ -88,7 +104,7 @@ export const verifyOTP = (email: string, otp: string) => {
 const refreshTokens: string[] = [];
 
 export const generateAccessToken = (user: IUser) => {
-  return jwt.sign({ id: user._id, role: user.role }, process.env.JWT_SECRET as string, { expiresIn: '1h' });
+  return jwt.sign({ id: user._id, role: user.role }, process.env.JWT_SECRET as string, { expiresIn: '7d' });
 };
 
 export const generateRefreshToken = (user: IUser) => {

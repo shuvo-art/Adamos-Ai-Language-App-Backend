@@ -3,6 +3,7 @@ import bcrypt from 'bcrypt';
 import jwt from 'jsonwebtoken';
 import { registerUser, loginUser, generateOTP, verifyOTP, generateAccessToken, generateRefreshToken, verifyRefreshToken } from './auth.service';
 import { User } from '../user/user.model';
+import { Subscription } from '../subscription/subscription.model';
 import { z } from 'zod';
 
 const router = express.Router();
@@ -64,12 +65,18 @@ router.post(
   (async (req: Request, res: Response): Promise<void> => {
     try {
       const { email, password, name } = signupSchema.parse(req.body);
-
+      console.log('Email:', req.body);
       // Register the user
       const user = await registerUser(email, password, name);
 
+      const accessToken = generateAccessToken(user);
+      const refreshToken = generateRefreshToken(user);
+
+      refreshTokens.push(refreshToken);
+
       // Generate and send an OTP to the user's email
       const otp = await generateOTP(email);
+
 
       // Exclude the password field from the response
       const userResponse = {
@@ -79,6 +86,8 @@ router.post(
         role: user.role,
         language: user.language,
         plan: user.plan,
+        dailyGoal: user.dailyGoal,
+        expertiseLevel: user.expertiseLevel,
       };
 
       res.status(201).json({
@@ -86,6 +95,8 @@ router.post(
         message: 'User registered successfully. OTP sent to email.',
         otp, // Include OTP for testing purposes (remove in production).
         user: userResponse,
+        accessToken,
+        refreshToken,
       });
     } catch (error: any) {
       res.status(400).json({ success: false, message: error.message });
@@ -93,42 +104,161 @@ router.post(
   }) as RequestHandler
 );
 
-// Login route
-router.post(
-  '/login',
-  (async (req: Request, res: Response): Promise<void> => {
-    try {
-      const { email, password } = loginSchema.parse(req.body);
-      const user = await User.findOne({ email });
+// Login
+router.post('/login', async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { email, password } = loginSchema.parse(req.body);
+    const user = await User.findOne({ email });
 
-      if (!user || !(await bcrypt.compare(password, user.password))) {
-        res.status(401).json({ success: false, message: 'Invalid email or password' });
-        return;
-      }
-
-      const accessToken = generateAccessToken(user);
-      const refreshToken = generateRefreshToken(user);
-
-      refreshTokens.push(refreshToken); // Save the refresh token
-
-      res.status(200).json({
-        success: true,
-        user: {
-          _id: user._id,
-          email: user.email,
-          name: user.name,
-          role: user.role,
-          language: user.language,
-          profileImage: user.profileImage,
-        },
-        accessToken,
-        refreshToken,
-      });
-    } catch (error: any) {
-      res.status(500).json({ success: false, message: error.message });
+    if (!user || !(await bcrypt.compare(password, user.password))) {
+      res.status(401).json({ success: false, message: 'Invalid email or password' });
+      return;
     }
-  }) as RequestHandler
-);
+
+    // Check if the user has a subscription, if not create one
+    const existingSubscription = await Subscription.findOne({ user: user._id });
+
+    if (!existingSubscription) {
+      const startDate = new Date();
+      const endDate = new Date();
+      endDate.setMonth(startDate.getMonth() + 1);
+
+      await Subscription.create({
+        user: user._id,
+        type: 'Free',
+        startDate,
+        endDate,
+      });
+    }
+
+    const accessToken = generateAccessToken(user);
+    const refreshToken = generateRefreshToken(user);
+    refreshTokens.push(refreshToken);
+
+    res.status(200).json({
+      success: true,
+      user: {
+        _id: user._id,
+        email: user.email,
+        name: user.name,
+        role: user.role,
+        language: user.language,
+        plan: user.plan,
+        profileImage: user.profileImage,
+        dailyGoal: user.dailyGoal,
+        expertiseLevel: user.expertiseLevel,
+      },
+      accessToken,
+      refreshToken,
+    });
+  } catch (error: any) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+// Google OAuth Login/Signup
+router.post('/oauth/google', (async (req: Request, res: Response) => {
+  try {
+    const { email, name, profileImage } = req.body;
+    
+    if (!email || !name) {
+      return res.status(400).json({ success: false, message: 'Email and name are required' });
+    }
+    
+    let user = await User.findOne({ email });
+    
+    if (!user) {
+      user = new User({
+        email,
+        name,
+        profileImage,
+        plan: 'Free',
+        password: 'oauth_temp_password', // Dummy password to satisfy validation
+      });
+      await user.save();
+
+      // Assign a Free subscription on user registration
+      const startDate = new Date();
+      const endDate = new Date();
+      endDate.setMonth(startDate.getMonth() + 1);
+      await Subscription.create({ user: user._id, type: 'Free', startDate, endDate });
+    }
+
+    const accessToken = generateAccessToken(user);
+    const refreshToken = generateRefreshToken(user);
+    
+    res.status(200).json({
+      success: true,
+      user: {
+        _id: user._id,
+        email: user.email,
+        name: user.name,
+        role: user.role,
+        profileImage: user.profileImage,
+        plan: user.plan,
+        language: user.language,
+        dailyGoal: user.dailyGoal,
+        expertiseLevel: user.expertiseLevel,
+      },
+      accessToken,
+      refreshToken,
+    });
+  } catch (error: any) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+}) as RequestHandler);
+
+// Apple OAuth Login/Signup
+router.post('/oauth/apple', (async (req: Request, res: Response) => {
+  try {
+    const { email, name, profileImage } = req.body;
+    
+    if (!email || !name) {
+      return res.status(400).json({ success: false, message: 'Email and name are required' });
+    }
+    
+    let user = await User.findOne({ email });
+    
+    if (!user) {
+      user = new User({
+        email,
+        name,
+        profileImage,
+        plan: 'Free',
+        password: 'oauth_temp_password', // Dummy password to satisfy validation
+      });
+      await user.save();
+
+      // Assign a Free subscription on user registration
+      const startDate = new Date();
+      const endDate = new Date();
+      endDate.setMonth(startDate.getMonth() + 1);
+      await Subscription.create({ user: user._id, type: 'Free', startDate, endDate });
+    }
+
+    const accessToken = generateAccessToken(user);
+    const refreshToken = generateRefreshToken(user);
+    
+    res.status(200).json({
+      success: true,
+      user: {
+        _id: user._id,
+        email: user.email,
+        name: user.name,
+        role: user.role,
+        profileImage: user.profileImage,
+        plan: user.plan,
+        language: user.language,
+        dailyGoal: user.dailyGoal,
+        expertiseLevel: user.expertiseLevel,
+      },
+      accessToken,
+      refreshToken,
+    });
+  } catch (error: any) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+}) as RequestHandler);
 
 // Send OTP for password reset
 router.post(

@@ -10,7 +10,7 @@ import subscriptionWebhook from './app/modules/subscription/subscription.control
 
 const app = express();
 const server = createServer(app);
-const PORT = process.env.PORT || 5000;
+const PORT = process.env.PORT || 5001;
 
 // Use raw middleware only for the Stripe webhook
 app.use('/api/subscription/stripe', express.raw({ type: 'application/json' }), subscriptionWebhook);

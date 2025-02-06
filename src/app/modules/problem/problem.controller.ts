@@ -3,6 +3,7 @@ import nodemailer from 'nodemailer';
 
 export const reportProblem = async (req: Request, res: Response): Promise<void> => {
   const { email, description } = req.body;
+  console.log('Email:', req.body);
 
   if (!email || !description) {
     res.status(400).json({ success: false, message: 'Email and description are required.' });
